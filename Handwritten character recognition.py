@@ -1,43 +1,70 @@
-import tensorflow as tf
-from tensorflow.keras import layers, models
-import matplotlib.pyplot as plt
+import os
+import numpy as np
+import librosa
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.ensemble import RandomForestClassifier
 
-# Load MNIST dataset (handwritten digits)
-(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+# ----------- Feature Extraction -----------
+def extract_features(file_path):
+    try:
+        audio, sample_rate = librosa.load(file_path, sr=22050)
+        mfccs = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=40)
+        mfccs_scaled = np.mean(mfccs, axis=1)
+        return mfccs_scaled
+    except Exception as e:
+        print("Error in file:", file_path, "|", e)
+        return None
 
-# Normalize data
-x_train = x_train / 255.0
-x_test = x_test / 255.0
+# ----------- Dataset Path -----------
+dataset_path = "C:\\Users\\Kanchan\\OneDrive\\Desktop\\machine learning\\dataset"
 
-# Build Model
-model = models.Sequential([
-    layers.Flatten(input_shape=(28,28)),
-    layers.Dense(128, activation='relu'),
-    layers.Dense(64, activation='relu'),
-    layers.Dense(10, activation='softmax')
-])
+features = []
+labels = []
 
-# Compile Model
-model.compile(
-    optimizer='adam',
-    loss='sparse_categorical_crossentropy',
-    metrics=['accuracy']
+# ----------- Load Dataset -----------
+for root, dirs, files in os.walk(dataset_path):
+    for file in files:
+        if file.lower().endswith(".wav"):
+            file_path = os.path.join(root, file)
+            emotion = os.path.basename(root)
+
+            data = extract_features(file_path)
+
+            if data is not None and len(data) == 40:
+                features.append(data)
+                labels.append(emotion)
+
+X = np.array(features)
+y = np.array(labels)
+
+if len(X) == 0:
+    raise ValueError("❌ Dataset empty hai ya path galat hai")
+
+print("✅ Total samples:", len(X))
+
+# ----------- Encode Labels -----------
+encoder = LabelEncoder()
+y_encoded = encoder.fit_transform(y)
+
+# ----------- Train Test Split -----------
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y_encoded, test_size=0.2, random_state=42
 )
 
-# Train Model
-model.fit(x_train, y_train, epochs=5)
+# ----------- Model (Random Forest) -----------
+model = RandomForestClassifier(n_estimators=200, random_state=42)
 
-# Evaluate Model
-test_loss, test_acc = model.evaluate(x_test, y_test)
+# ----------- Training -----------
+model.fit(X_train, y_train)
 
-print("Test Accuracy:", test_acc)
+# ----------- Prediction -----------
+y_pred = model.predict(X_test)
 
-# Prediction Example
-prediction = model.predict(x_test)
+# ----------- Evaluation -----------
+accuracy = accuracy_score(y_test, y_pred)
 
-print("Predicted Digit:", prediction[0].argmax())
-
-# Show image
-plt.imshow(x_test[0], cmap='gray')
-plt.title("Handwritten Digit")
-plt.show()
+print("\n🎯 Accuracy:", accuracy)
+print("\n📊 Classification Report:\n")
+print(classification_report(y_test, y_pred, target_names=encoder.classes_))
